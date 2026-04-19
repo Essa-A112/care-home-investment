@@ -1,8 +1,11 @@
 # Environment
 .env
 
-# Data files (download locally via pipeline)
-data/
+# Data files (download locally via pipeline) – keep directory stubs
+# The negation of !**/.gitkeep requires parent dirs to not be excluded,
+# so we exclude files/non-.gitkeep entries rather than whole directories.
+data/**/*
+!data/**/.gitkeep
 
 # Python
 __pycache__/
