@@ -37,15 +37,44 @@ MIN_TRANSACTIONS = 30
 
 # Characters stripped when normalising district names for matching
 _NORMALISE_RE = re.compile(r"[^a-z0-9 ]")
-
-
 _WHITESPACE_RE = re.compile(r"\s+")
+
+# Land Registry district names that don't normalise to a direct match against
+# the ONS LAD name. Keys are the normalised Land Registry form; values are the
+# normalised ONS form. Covers:
+#   • "City of X" word-order inversions (LR: "CITY OF BRISTOL", ONS: "Bristol, City of")
+#   • Single-word truncations (LR: "WREKIN", ONS: "Telford and Wrekin")
+#   • Possessive / county differences (LR: "HEREFORDSHIRE", ONS: "Herefordshire, County of")
+_NAME_ALIASES: dict[str, str] = {
+    # City of X inversions
+    "city of bristol":              "bristol city of",
+    "city of derby":                "derby",
+    "city of kingston upon hull":   "kingston upon hull city of",
+    "city of london":               "city of london",
+    "city of nottingham":           "nottingham",
+    "city of peterborough":         "peterborough",
+    "city of plymouth":             "plymouth",
+    "city of westminster":          "westminster",
+    "city of york":                 "york",
+    # Truncated / renamed
+    "wrekin":                       "telford and wrekin",
+    "herefordshire":                "herefordshire county of",
+    "durham":                       "county durham",
+    "st helens":                    "st helens",
+    "kings lynn and west norfolk":  "kings lynn and west norfolk",
+}
 
 
 def _normalise_name(name: str) -> str:
     """Lower-case, remove punctuation, collapse whitespace."""
     cleaned = _NORMALISE_RE.sub("", name.lower())
     return _WHITESPACE_RE.sub(" ", cleaned).strip()
+
+
+def _normalise_with_alias(name: str) -> str:
+    """Normalise *name* then apply the alias table if a match exists."""
+    key = _normalise_name(name)
+    return _NAME_ALIASES.get(key, key)
 
 
 def _load_year(path: Path, year: int) -> pd.DataFrame:
@@ -123,8 +152,11 @@ def attach_lad_codes(
     lookup = lad_lookup.copy()
     lookup["_key"] = lookup["LAD_name"].map(_normalise_name)
 
+    # Use alias-aware normalisation so known Land Registry name variants
+    # (e.g. "CITY OF BRISTOL" → "bristol city of") resolve to the correct
+    # ONS key even when the word order or format differs.
     growth["_key"] = growth["district"].str.lower().map(
-        lambda s: _normalise_name(s) if isinstance(s, str) else ""
+        lambda s: _normalise_with_alias(s) if isinstance(s, str) else ""
     )
 
     merged = growth.merge(lookup, on="_key", how="left", suffixes=("", "_ons"))
